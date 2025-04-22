@@ -4,13 +4,18 @@ import (
 	"kkj123/handles"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 func InitRouter() {
 	server := echo.New()
+	server.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"http://127.0.0.1:8081", "http://192.168.10.68:8081", "http://localhost:8081"}, // 前端地址
+		AllowMethods: []string{echo.GET, echo.PUT, echo.POST, echo.DELETE},
+	}))
 	// 设置websocket的路由
 	BindRouter(server)
-	server.Start(":8080")
+	server.Start("127.0.0.1:8080")
 }
 
 func BindRouter(server *echo.Echo) {
@@ -24,5 +29,5 @@ func BindRouter(server *echo.Echo) {
 	api.POST("/joinGroup", handles.JoinGroup)
 
 	// 测试用
-	handles.InitGroup()
+	// handles.InitGroup()
 }
