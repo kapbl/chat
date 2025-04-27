@@ -23,10 +23,9 @@ type client struct {
 }
 
 type ChatMessage struct {
-	Username string `json:"username"`
-	Content  string `json:"content"`
-	TargetID string `json:"target_id"`
-	GroupID  string `json:"group_id"` // 群组id
+	Sender  string `json:"sender"`
+	Channel string `json:"channel"` // 频道
+	Content string `json:"content"`
 }
 
 var (
@@ -36,13 +35,18 @@ var (
 	clients   = make(map[string]*client)
 	clientsMu sync.Mutex
 )
+var channels = make(map[string][]*client) // 频道列表
+
+func init() {
+	// 初始化频道列表
+	channels["general"] = make([]*client, 0)
+}
 
 func HandleWebSocker(ctx echo.Context) error {
 	// 升级到websocket协议
 	ws, err := upgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
 	if err != nil {
 		log.Println("WebSocket upgrade error:", err)
-		return err
 	}
 	defer ws.Close()
 	// 注册客户端
@@ -62,13 +66,17 @@ func registerClient(ws *websocket.Conn) {
 		user_id: ws.RemoteAddr().String(),
 		status:  online,
 	}
+	// 将客户端添加到频道列表，测试用
+	channels["general"] = append(channels["general"], clients[ws.RemoteAddr().String()])
 	log.Println("Client connected:", ws.RemoteAddr())
+	for k, _ := range clients {
+		log.Println("current clients:", k)
+	}
 	go func() {
 		msg := ChatMessage{
-			Username: "system",
-			Content:  ws.RemoteAddr().String(),
-			TargetID: ws.RemoteAddr().String(),
-			GroupID:  "",
+			Sender:  "system",
+			Content: ws.RemoteAddr().String(),
+			Channel: "general",
 		}
 		err := ws.WriteJSON(msg)
 		if err != nil {
@@ -99,68 +107,38 @@ func messageHandler(ws *websocket.Conn) {
 			log.Println("Read error:", err)
 			break
 		}
-		// 判断是否是私人消息
-		if chatMsg.TargetID != "" {
-			handlePrivateMessage(chatMsg)
-		} else if chatMsg.GroupID != "" {
-			broadcastMessageGroup(chatMsg)
+		// 判断是否是频道消息
+		if chatMsg.Channel != "" {
+			handleChannelMessage(chatMsg)
 		}
 	}
 }
 
-// 处理群组消息
-func broadcastMessageGroup(message ChatMessage) {
+// 处理频道消息
+func handleChannelMessage(message ChatMessage) {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
-	log.Println(groups[message.GroupID])
-	if _, ok := groups[message.GroupID]; !ok {
-		log.Println("Group not found:", message.GroupID)
+	if _, exist := channels[message.Channel]; !exist {
+		log.Println("Channel not found:", message.Channel)
 		return
 	}
-	for _, c := range groups[message.GroupID].Inclient {
-		if clients[c] == nil {
-			log.Println("Client not found:", c)
+	for _, c := range channels[message.Channel] {
+		if clients[c.user_id] == nil {
+			log.Println("Client not found:", c.user_id)
 			continue
 		}
-		if clients[c].status == offline {
-			log.Println("Client is offline:", c)
+		if clients[c.user_id].status == offline {
+			log.Println("Client is offline:", c.user_id)
 			continue
 		}
-		err := clients[c].conn.WriteJSON(message)
+		if clients[c.user_id].user_id == message.Sender {
+			continue
+		}
+		err := clients[c.user_id].conn.WriteJSON(message)
 		if err != nil {
 			log.Println("Write error:", err)
-			clients[c].conn.Close()
+			clients[c.user_id].conn.Close()
 		}
 	}
-}
-
-// 广播消息给所有客户端
-func broadcastMessage(message []byte) {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
-	for _, c := range clients {
-		if c.status == offline {
-			continue
-		}
-		err := c.conn.WriteMessage(websocket.TextMessage, message)
-		if err != nil {
-			log.Println("Write error:", err)
-			c.conn.Close()
-		}
-	}
-}
-
-// 处理私人消息
-// 发送给指定的客户端
-func handlePrivateMessage(message ChatMessage) {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
-	if clients[message.TargetID] == nil {
-		log.Println("Target client not found:", message.TargetID)
-	} else if clients[message.TargetID].status == offline {
-		log.Println("Target client is offline:", message.TargetID)
-		return
-	}
-	clients[message.TargetID].conn.WriteJSON(message)
-	log.Println("Private message sent to:", message.TargetID, "Content:", message.Content)
+	log.Println("Private message sent to:", message.Channel, "Content:", message.Content)
 }
