@@ -15,7 +15,7 @@ func InitRouter() {
 	}))
 	// 设置websocket的路由
 	BindRouter(server)
-	server.Start("127.0.0.1:8080")
+	server.Start("0.0.0.0:8080")
 }
 
 func BindRouter(server *echo.Echo) {
@@ -26,8 +26,7 @@ func BindRouter(server *echo.Echo) {
 	api.POST("/register", handles.Register)
 	api.POST("/createUser", handles.CreateUser) // 创建用户的路由
 	// 设置群组的路由组
-	api.POST("/joinGroup", handles.JoinGroup)
-
-	// 测试用
-	// handles.InitGroup()
+	api.GET("/channels", handles.ChannelSearch)       // 获取频道列表
+	api.POST("/JoinChannel", handles.JoinChannel)     // 加入频道
+	api.POST("/CreateChannel", handles.CreateChannel) // 加入频道
 }

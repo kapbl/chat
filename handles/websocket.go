@@ -38,8 +38,11 @@ var (
 var channels = make(map[string][]*client) // 频道列表
 
 func init() {
-	// 初始化频道列表
-	channels["general"] = make([]*client, 0)
+	// 初始化频道列表， 测试用的
+	channels["bot"] = make([]*client, 0)
+	channels["game"] = make([]*client, 0)
+	channels["sport"] = make([]*client, 0)
+	channels["book"] = make([]*client, 0)
 }
 
 func HandleWebSocker(ctx echo.Context) error {
@@ -67,16 +70,16 @@ func registerClient(ws *websocket.Conn) {
 		status:  online,
 	}
 	// 将客户端添加到频道列表，测试用
-	channels["general"] = append(channels["general"], clients[ws.RemoteAddr().String()])
+	channels["bot"] = append(channels["bot"], clients[ws.RemoteAddr().String()])
 	log.Println("Client connected:", ws.RemoteAddr())
-	for k, _ := range clients {
+	for k := range clients {
 		log.Println("current clients:", k)
 	}
 	go func() {
 		msg := ChatMessage{
-			Sender:  "system",
+			Sender:  "bot",
 			Content: ws.RemoteAddr().String(),
-			Channel: "general",
+			Channel: "bot",
 		}
 		err := ws.WriteJSON(msg)
 		if err != nil {
