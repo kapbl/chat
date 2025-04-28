@@ -10,5 +10,4 @@ func main() {
 	database.InitDatabse()
 	// 启动服务器
 	router.InitRouter()
-	// todo ss
 }
