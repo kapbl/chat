@@ -1,11 +1,14 @@
 package handles
 
 import (
+	"kkj123/database"
+	"kkj123/models"
 	"log"
 
 	"github.com/labstack/echo/v4"
 )
 
+// 频道搜索路由处理函数
 func ChannelSearch(ctx echo.Context) error {
 	// 获取频道名称
 	channel := ctx.QueryParam("channel")
@@ -33,6 +36,7 @@ func ChannelSearch(ctx echo.Context) error {
 	return ctx.JSON(200, results)
 }
 
+// 加入频道路由处理函数
 func JoinChannel(ctx echo.Context) error {
 	// 获取频道名称
 	type mess struct {
@@ -50,6 +54,12 @@ func JoinChannel(ctx echo.Context) error {
 		ctx.JSON(400, map[string]string{"message": "频道不存在"})
 	}
 	channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[rec.Sender])
+	curChannel := []models.Channel{
+		{ChannelID: rec.ChannelID, Name: rec.ChannelID},
+	}
+	if err := database.DB.Create(&curChannel).Error; err != nil {
+		log.Fatal("创建频道失败:", err)
+	}
 	// 发送消息
 	msg := ChatMessage{
 		Sender:  "bot",
@@ -64,6 +74,7 @@ func JoinChannel(ctx echo.Context) error {
 	return ctx.String(200, "join channel success")
 }
 
+// 创建频道路由处理函数
 func CreateChannel(ctx echo.Context) error {
 	type mess struct {
 		Sender             string `json:"sender"`             // 发送者
@@ -83,11 +94,15 @@ func CreateChannel(ctx echo.Context) error {
 	channels[rec.ChannelID] = make([]*client, 0)
 	// 将当前用户加入频道
 	channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[rec.Sender])
+	// 将该频道存入用户数据库中的channels字段中
+
 	// 发送消息
 	clients[rec.Sender].conn.WriteJSON(ChatMessage{
 		Sender:  "bot",
 		Content: "欢迎加入频道 " + rec.ChannelID,
 		Channel: rec.ChannelID,
 	})
+	// 订阅该频道
+	go subscribeRedisChannel(rec.ChannelID)
 	return ctx.String(200, "create channel success")
 }

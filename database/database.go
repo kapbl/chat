@@ -16,7 +16,7 @@ func InitDatabse() {
 	if err != nil {
 		log.Println(err)
 	}
-	db.AutoMigrate(&models.User{})
+	db.AutoMigrate(&models.User{}, &models.Channel{})
 	DB = db
 }
 

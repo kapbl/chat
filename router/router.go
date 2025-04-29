@@ -13,8 +13,8 @@ func InitRouter() {
 		AllowOrigins: []string{"http://127.0.0.1:8081", "http://192.168.10.68:8081", "http://localhost:8081"}, // 前端地址
 		AllowMethods: []string{echo.GET, echo.PUT, echo.POST, echo.DELETE},
 	}))
-	// 设置websocket的路由
 	BindRouter(server)
+	handles.IninDafaultChannel()
 	server.Start("0.0.0.0:8080")
 }
 
