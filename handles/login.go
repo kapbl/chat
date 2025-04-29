@@ -41,5 +41,8 @@ func Login(ctx echo.Context) error {
 			return ctx.JSON(401, map[string]string{"error": "邮箱和用户名或密码错误"})
 		}
 	}
-	return ctx.JSON(200, map[string]string{"message": "登录成功"})
+	// 生成JWT token
+	jwtToken := JWTTokenGenerate("my_secret", user.UserID)
+	// 将JWT token 发送给客户端
+	return ctx.JSON(200, map[string]string{"token": jwtToken})
 }

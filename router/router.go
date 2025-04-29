@@ -21,12 +21,17 @@ func InitRouter() {
 func BindRouter(server *echo.Echo) {
 	server.GET("/ws", handles.HandleWebSocker)
 	// 设置登录和注册的路由组
-	api := server.Group("/api")
-	api.POST("/login", handles.Login)
-	api.POST("/register", handles.Register)
-	api.POST("/createUser", handles.CreateUser) // 创建用户的路由
+	auth := server.Group("/auth")
+	auth.POST("/login", handles.Login)
+	auth.POST("/register", handles.Register)
+	auth.POST("/createUser", handles.CreateUser) // 创建用户的路由
 	// 设置群组的路由组
-	api.GET("/channels", handles.ChannelSearch)       // 获取频道列表
-	api.POST("/JoinChannel", handles.JoinChannel)     // 加入频道
-	api.POST("/CreateChannel", handles.CreateChannel) // 加入频道
+	api := server.Group("/api")
+	api.Use(handles.JWTValidator([]byte("my_secret")))
+	api.GET("/SearchChannels", handles.ChannelSearch)         // 获取频道列表
+	api.POST("/JoinChannel", handles.JoinChannel)             // 加入频道
+	api.POST("/CreateChannel", handles.CreateChannel)         // 加入频道
+	api.GET("/InitJoinedChannel", handles.InitJoinedChannels) // 加入频道
+	api.PUT("/ModifyChannel", handles.ModifyChannel)
+	api.DELETE("/DeleteChannel", handles.DeleteChannel)
 }
