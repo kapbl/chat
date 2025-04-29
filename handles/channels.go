@@ -212,7 +212,7 @@ func DeleteChannel(ctx echo.Context) error {
 			return err
 		}
 	}
-	// 判断这个用户是否关联了这个频道
+	//  判断这个用户是否关联了这个频道
 	curUser := models.User{}
 	if claims, ok := ctx.Get("jwt_claims").(*JwtCustomClaims); ok {
 		if err := database.DB.Where("user_id=?", claims.UserID).First(&curUser).Error; err != nil {
@@ -220,8 +220,8 @@ func DeleteChannel(ctx echo.Context) error {
 				ctx.JSON(400, map[string]string{"error": "未找到该用户"})
 			}
 		}
-		// 找到了该用户
-		// 联合查找
+		// 找到了该用户 - 联合查找
+		// fixme 修复删除原有的频道
 		var curChannels []models.Channel
 		if err := database.DB.Model(&curUser).Association("Channels").Find(&curChannels); err != nil {
 			ctx.JSON(400, map[string]string{"error": "该用户未与频道关联"})
