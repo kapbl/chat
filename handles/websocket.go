@@ -211,7 +211,7 @@ func registerClient(ws *websocket.Conn) error {
 	}
 
 	clients[userInstance.user_id] = &userInstance
-	
+
 	// !step4: 从数据库中查询该用户
 	targetUser := models.User{}
 	targetChannel := []models.Channel{}
