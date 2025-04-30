@@ -12,9 +12,16 @@ type Channel struct {
 
 type User struct {
 	gorm.Model
-	UserID   string // unique and generate by server
-	Email    string // unique
-	Username string // unique
+	UserID   string `gorm:"unique"`
+	Email    string
+	Username string
 	Password string
 	Channels []Channel `gorm:"many2many:user_channels;"`
+}
+
+type UserChannel struct {
+	UserID    uint    `gorm:"primaryKey"`
+	ChannelID uint    `gorm:"primaryKey"`
+	User      User    `gorm:"foreignKey:UserID; constraint:OnDelete:CASCADE"`
+	Channel   Channel `gorm:"foreignKey:ChannelID; constraint:OnDelete:RESTRICT;"`
 }

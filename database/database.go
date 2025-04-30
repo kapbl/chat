@@ -16,7 +16,12 @@ func InitDatabse() {
 	if err != nil {
 		log.Println(err)
 	}
-	db.AutoMigrate(&models.User{}, &models.Channel{})
+	if err := db.SetupJoinTable(&models.User{}, "Channels", &models.UserChannel{}); err != nil {
+		log.Println(err)
+	}
+	if err := db.AutoMigrate(&models.User{}, &models.Channel{}, &models.UserChannel{}); err != nil {
+		log.Println(err)
+	}
 	DB = db
 }
 

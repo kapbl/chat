@@ -72,3 +72,26 @@ func JWTValidator(secretKey []byte) echo.MiddlewareFunc {
 		}
 	}
 }
+
+func JWTUnencoder(secretKey []byte, tokenString string) *JwtCustomClaims {
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		&JwtCustomClaims{},
+		func(token *jwt.Token) (interface{}, error) {
+			// 验证签名算法
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("意外的签名方法: %v", token.Header["alg"])
+			}
+			return secretKey, nil
+		},
+	)
+	// 处理解析错误
+	if err != nil {
+		return nil
+	}
+	// 验证Claims有效性
+	if claims, ok := token.Claims.(*JwtCustomClaims); ok && token.Valid {
+		return claims
+	}
+	return nil
+}

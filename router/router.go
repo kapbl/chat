@@ -15,16 +15,18 @@ func InitRouter() {
 	}))
 	BindRouter(server)
 	handles.IninDafaultChannel()
+	handles.InitChannels()
 	server.Start("0.0.0.0:8080")
 }
 
 func BindRouter(server *echo.Echo) {
-	server.GET("/ws", handles.HandleWebSocker)
 	// 设置登录和注册的路由组
 	auth := server.Group("/auth")
 	auth.POST("/login", handles.Login)
 	auth.POST("/register", handles.Register)
 	auth.POST("/createUser", handles.CreateUser) // 创建用户的路由
+
+	server.GET("/ws", handles.HandleWebSocker)
 	// 设置群组的路由组
 	api := server.Group("/api")
 	api.Use(handles.JWTValidator([]byte("my_secret")))

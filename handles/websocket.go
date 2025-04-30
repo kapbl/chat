@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"kkj123/database"
+	"kkj123/models"
 	"log"
 	"net/http"
 	"sync"
@@ -42,6 +43,14 @@ var (
 		"bot": make([]*client, 0),
 	}
 )
+
+func InitChannels() {
+	allChannels := []models.Channel{}
+	database.DB.Find(&allChannels)
+	for _, v := range allChannels {
+		channels[v.Name] = make([]*client, 0)
+	}
+}
 
 // 在 main 或初始化部分启动 Redis 频道的订阅
 func IninDafaultChannel() {
@@ -103,14 +112,37 @@ func registerClient(ws *websocket.Conn) {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
 
-	c := &client{
+	// !step1: 获取连接的初始信息
+	currUser := struct {
+		User string `json:"user"`
+	}{}
+	ws.ReadJSON(&currUser)
+
+	claims := JWTUnencoder([]byte("my_secret"), currUser.User)
+	if claims == nil {
+		return
+	}
+	// !step2: 在服务器环境中建立该用户
+	userInstance := client{
 		conn:    ws,
-		user_id: ws.RemoteAddr().String(),
+		user_id: claims.UserID,
 		status:  online,
 	}
-	clients[ws.RemoteAddr().String()] = c
-	channels["bot"] = append(channels["bot"], c)
-	log.Println("客户端连接 ", ws.RemoteAddr().String())
+
+	// * map 像这样： 14ae3dd733491c76bd64b942a99acd49b9f2d7ac7f1e74b516f7233443f05af6 = client{}
+	clients[userInstance.user_id] = &userInstance
+	// 从数据库中查询该用户
+	targetUser := models.User{}
+	targetChannel := []models.Channel{}
+	database.DB.Where("user_id=?", userInstance.user_id).First(&targetUser)
+	if err := database.DB.Model(&targetUser).Association("Channels").Find(&targetChannel); err != nil {
+		log.Println(err)
+	}
+	// 将该用户加入到自己已经保存的频道
+	for _, v := range targetChannel {
+		channels[v.ChannelID] = append(channels[v.ChannelID], &userInstance)
+	}
+	log.Println("客户端连接 ", targetUser.Username)
 	// 发送欢迎消息
 	welcomeMsg := ChatMessage{
 		Sender:  "bot",

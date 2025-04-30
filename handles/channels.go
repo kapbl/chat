@@ -13,21 +13,23 @@ import (
 
 // 频道搜索路由处理函数
 func ChannelSearch(ctx echo.Context) error {
-	// 获取频道名称
+	// step1: 通过客户端发送频道名称
 	channel := ctx.QueryParam("channel")
 	if channel == "" {
 		return ctx.String(400, "channel is required")
 	}
-	// 获取频道列表
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
-	// 根据频道名称查询，原有的频道的名称是否包含
-	curChannels := models.Channel{}
-	if err := database.DB.Where("channel_id=?", channel).First(&curChannels).Error; err != nil {
+	// step2: 频道名称是否为空
+	if channel == "" {
+		return ctx.String(400, "channel is nil")
+	}
+	// step3: 向数据库中查询频道是否存在
+	targetChannel := models.Channel{}
+	if err := database.DB.Where("channel_id=?", channel).First(&targetChannel).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ctx.String(400, "该频道不存在")
 		}
 	}
+	// step4: 生成回执消息
 	type Channel struct {
 		ID      string `json:"id"`
 		Name    string `json:"name"`
@@ -37,13 +39,13 @@ func ChannelSearch(ctx echo.Context) error {
 	results := []Channel{
 		{ID: channel, Name: channel, Members: 42},
 	}
-	// 返回频道列表
+	//  step5: 返回频道列表
 	return ctx.JSON(200, results)
 }
 
 // 加入频道路由处理函数
 func JoinChannel(ctx echo.Context) error {
-	// 获取频道名称
+	// step1: 获取频道名称
 	type mess struct {
 		Sender    string `json:"sender"`    // 发送者
 		ChannelID string `json:"channelID"` // 频道id
@@ -56,9 +58,10 @@ func JoinChannel(ctx echo.Context) error {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
 	if _, ok := channels[rec.ChannelID]; !ok {
+		log.Println("频道不存在")
 		ctx.JSON(400, map[string]string{"message": "频道不存在"})
 	}
-	channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[rec.Sender])
+
 	curChannel := models.Channel{}
 	database.DB.Where(models.Channel{ChannelID: rec.ChannelID, Name: rec.ChannelID}).FirstOrCreate(&curChannel)
 
@@ -74,20 +77,21 @@ func JoinChannel(ctx echo.Context) error {
 			if err := database.DB.Model(&curUser).Association("Channels").Append(&curChannel); err != nil {
 				log.Println("关联频道失败:", err)
 			}
+			channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[claims.UserID])
+			// 发送消息
+			msg := ChatMessage{
+				Sender:  "bot",
+				Content: "欢迎加入频道 " + curUser.Username,
+				Channel: rec.ChannelID,
+			}
+			err := clients[claims.UserID].conn.WriteJSON(msg)
+			if err != nil {
+				log.Println("Write error:", err)
+				clients[claims.UserID].conn.Close()
+			}
 		}
 	}
-	// 发送消息
-	msg := ChatMessage{
-		Sender:  "bot",
-		Content: "欢迎加入频道 " + rec.ChannelID,
-		Channel: rec.ChannelID,
-	}
-	err := clients[rec.Sender].conn.WriteJSON(msg)
-	if err != nil {
-		log.Println("Write error:", err)
-		clients[rec.Sender].conn.Close()
-	}
-	return ctx.String(200, "join channel success")
+	return ctx.String(200, "加入频道成功")
 }
 
 // 创建频道路由处理函数
@@ -107,9 +111,6 @@ func CreateChannel(ctx echo.Context) error {
 	if _, ok := channels[rec.ChannelID]; ok {
 		ctx.JSON(400, map[string]string{"message": "频道已存在"})
 	}
-	channels[rec.ChannelID] = make([]*client, 0)
-	// 将当前用户加入频道
-	channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[rec.Sender])
 	// 将该频道存入用户数据库中的channels字段中
 	curChannel := models.Channel{}
 	database.DB.Where(models.Channel{ChannelID: rec.ChannelID, Name: rec.ChannelID}).FirstOrCreate(&curChannel)
@@ -125,16 +126,19 @@ func CreateChannel(ctx echo.Context) error {
 			if err := database.DB.Model(&curUser).Association("Channels").Append(&curChannel); err != nil {
 				log.Println("关联频道失败:", err)
 			}
+			channels[rec.ChannelID] = make([]*client, 0)
+			// 将当前用户加入频道
+			channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[claims.UserID])
+			// 发送消息
+			clients[claims.UserID].conn.WriteJSON(ChatMessage{
+				Sender:  "bot",
+				Content: "欢迎加入频道 " + curUser.Username,
+				Channel: rec.ChannelID,
+			})
+			// 订阅该频道
+			go subscribeRedisChannel(rec.ChannelID)
 		}
 	}
-	// 发送消息
-	clients[rec.Sender].conn.WriteJSON(ChatMessage{
-		Sender:  "bot",
-		Content: "欢迎加入频道 " + rec.ChannelID,
-		Channel: rec.ChannelID,
-	})
-	// 订阅该频道
-	go subscribeRedisChannel(rec.ChannelID)
 	return ctx.String(200, "create channel success")
 }
 
@@ -155,6 +159,7 @@ func InitJoinedChannels(ctx echo.Context) error {
 		}
 		channelID := []string{}
 		for _, v := range curChannels {
+			// 将用户添加到channels中
 			channelID = append(channelID, v.ChannelID)
 		}
 		return ctx.JSON(200, map[string]interface{}{"channelIDs": channelID})
@@ -193,12 +198,11 @@ func ModifyChannel(ctx echo.Context) error {
 	return ctx.JSON(200, map[string]string{"message": "频道修改成功"})
 }
 
-type DeleteChannelRequest struct {
-	ChannelID string `json:"channelID" binding:"required"`
-}
-
 // 用户删除一个已经加入的频道
 func DeleteChannel(ctx echo.Context) error {
+	type DeleteChannelRequest struct {
+		ChannelID string `json:"channelID" binding:"required"`
+	}
 	var req DeleteChannelRequest
 	if err := ctx.Bind(&req); err != nil {
 		ctx.JSON(400, map[string]string{"message": "请求格式不对"})
@@ -226,18 +230,14 @@ func DeleteChannel(ctx echo.Context) error {
 		if err := database.DB.Model(&curUser).Association("Channels").Find(&curChannels); err != nil {
 			ctx.JSON(400, map[string]string{"error": "该用户未与频道关联"})
 		}
-
 		for _, c := range curChannels {
 			if c.ChannelID == channel.ChannelID {
-				// 取消关联
-				database.DB.Model(&curUser).Association("Channels").Delete(&c)
+				// 删除某个用户和频道的关联
+				if err := database.DB.Where("user_id = ? AND channel_id = ?", curUser.ID, c.ID).Delete(&models.UserChannel{}).Error; err != nil {
+					return ctx.JSON(200, map[string]string{"message": "离开频道失败"})
+				}
 			}
 		}
 	}
-	// 如果频道存在，执行删除操作
-	if err := database.DB.Delete(&channel).Error; err != nil {
-		ctx.JSON(500, map[string]string{"message": "删除失败"})
-		return err
-	}
-	return nil
+	return ctx.JSON(200, map[string]string{"message": "离开频道成功"})
 }
