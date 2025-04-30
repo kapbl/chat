@@ -122,8 +122,7 @@ func subscribeRedisChannel(channel string) {
 	pubsub := database.RedisDB.Subscribe(context.Background(), channel)
 	defer pubsub.Close()
 	type PartialMessage struct {
-		User    string `json:"user"`
-		Content string `json:"content`
+		User string `json:"user"`
 	}
 	for msg := range pubsub.Channel() {
 		var sender PartialMessage
