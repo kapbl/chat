@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
+
 	// 启动数据库
 	database.InitDatabse()
 	// 启动redis数据库

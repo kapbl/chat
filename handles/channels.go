@@ -57,7 +57,7 @@ func JoinChannel(ctx echo.Context) error {
 	// 加入频道
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
-	if _, ok := channels[rec.ChannelID]; !ok {
+	if _, ok := channels.Load(rec.ChannelID); !ok {
 		log.Println("频道不存在")
 		ctx.JSON(400, map[string]string{"message": "频道不存在"})
 	}
@@ -77,10 +77,12 @@ func JoinChannel(ctx echo.Context) error {
 			if err := database.DB.Model(&curUser).Association("Channels").Append(&curChannel); err != nil {
 				log.Println("关联频道失败:", err)
 			}
-			channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[claims.UserID])
+			AddClient(rec.ChannelID, clients[claims.UserID])
+			// channelsMap.Store(rec.ChannelID, clients[claims.UserID])
+			// channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[claims.UserID])
 			// 发送消息
 			msg := ChatMessage{
-				Sender:  "bot",
+				User:    "bot",
 				Content: "欢迎加入频道 " + curUser.Username,
 				Channel: rec.ChannelID,
 			}
@@ -104,12 +106,17 @@ func CreateChannel(ctx echo.Context) error {
 	rec := mess{}
 	if err := ctx.Bind(&rec); err != nil {
 		ctx.JSON(400, map[string]string{"message": "请求参数错误"})
+		return err
 	}
 	// 创建频道
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
-	if _, ok := channels[rec.ChannelID]; ok {
+	// if _, ok := channels[rec.ChannelID]; ok {
+	// 	ctx.JSON(400, map[string]string{"message": "频道已存在"})
+	// }
+	if _, ok := channels.Load(rec.ChannelID); ok {
 		ctx.JSON(400, map[string]string{"message": "频道已存在"})
+		return errors.New("该频道已经存在了")
 	}
 	// 将该频道存入用户数据库中的channels字段中
 	curChannel := models.Channel{}
@@ -126,12 +133,13 @@ func CreateChannel(ctx echo.Context) error {
 			if err := database.DB.Model(&curUser).Association("Channels").Append(&curChannel); err != nil {
 				log.Println("关联频道失败:", err)
 			}
-			channels[rec.ChannelID] = make([]*client, 0)
+			// channels[rec.ChannelID] = make([]*client, 0)
 			// 将当前用户加入频道
-			channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[claims.UserID])
+			// channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[claims.UserID])
+			AddClient(rec.ChannelID, clients[claims.UserID])
 			// 发送消息
 			clients[claims.UserID].conn.WriteJSON(ChatMessage{
-				Sender:  "bot",
+				User:    "bot",
 				Content: "欢迎加入频道 " + curUser.Username,
 				Channel: rec.ChannelID,
 			})
