@@ -271,13 +271,4 @@ func unregisterClient(ws *websocket.Conn) {
 	if targetClient == nil {
 		return
 	}
-	// 从所有频道中移除
-	// for channel := range channels {
-	// 	for i, c := range channels[channel] {
-	// 		if c.user_id == targetClient.user_id {
-	// 			channels[channel] = append(channels[channel][:i], channels[channel][i+1:]...)
-	// 			break
-	// 		}
-	// 	}
-	// }
 }
