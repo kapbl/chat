@@ -33,6 +33,13 @@ func AddClient(key string, c *client) {
 	if ok {
 		clist := v.(*clientList)
 		clist.Lock()
+		// // 可能会出现重复的现象
+		// for i, v := range clist.clients {
+		// 	if v.user_id == c.user_id {
+		// 		clist.clients[i] = c
+		// 		return
+		// 	}
+		// }
 		clist.clients = append(clist.clients, c)
 		clist.Unlock()
 		return
@@ -93,6 +100,18 @@ func DeleteClient(key string, targetID string) {
 	}
 }
 
+func GetAllChannels() []string {
+	var allChannels []string                     // 初始化空切片（动态扩展）
+	channels.Range(func(k, v interface{}) bool { // 参数需为 interface{} 类型
+		key, ok := k.(string) // 类型断言
+		if ok {
+			allChannels = append(allChannels, key) // 通过 append 追加元素
+		}
+		return true // 返回 true 以继续遍历所有元素
+	})
+	return allChannels
+}
+
 type ChatMessage struct {
 	User    string `json:"user"`
 	Channel string `json:"channel"` // 频道
@@ -124,24 +143,32 @@ func subscribeRedisChannel(channel string) {
 	type PartialMessage struct {
 		User string `json:"user"`
 	}
+	sender := PartialMessage{}
 	for msg := range pubsub.Channel() {
-		var sender PartialMessage
 		err := json.Unmarshal([]byte(msg.Payload), &sender)
 		if err != nil {
-			fmt.Println("JSON 解析失败:", err)
+			log.Println("JSON 解析失败:", err)
 			return
 		}
+
 		claims := JWTUnencoder([]byte("my_secret"), sender.User)
 		if claims == nil {
 			log.Println("claims不能为空")
+			return
 		}
-		targetChannel := GetClients(msg.Channel)
-		for _, c := range targetChannel {
+
+		// 在这个频道中获取所有的客户端们
+		targetChannelClients := GetClients(msg.Channel)
+		for _, v := range targetChannelClients {
+			log.Println("频道中的用户有：", v.user_id)
+		}
+
+		for _, c := range targetChannelClients {
 			if c.user_id == claims.UserID {
 				continue
 			}
-			log.Println("广播消息", claims.UserID)
 
+			log.Println("广播消息", claims.UserID)
 			err := c.conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
 			if err != nil {
 				log.Printf("Error sending message to client: %v", err)
@@ -160,7 +187,6 @@ func HandleWebSocker(ctx echo.Context) error {
 		return err
 	}
 	defer ws.Close()
-
 	// 注册客户端
 	registerClient(ws)
 	defer unregisterClient(ws)
@@ -228,14 +254,7 @@ func registerClient(ws *websocket.Conn) error {
 
 	// !step6: 发送欢迎消息
 	log.Println("客户端已经连接 ", targetUser.Username)
-	welcomeMsg := ChatMessage{
-		User:    "bot",
-		Content: targetUser.UserID,
-		Channel: "bot",
-	}
-	if err := ws.WriteJSON(welcomeMsg); err != nil {
-		log.Println("欢迎消息发送失败:", err)
-	}
+	log.Println("当前服务器环境中的已连接的客户端数量：", len(clients))
 	return nil
 }
 
@@ -258,12 +277,16 @@ func publishMessage(channel string, message ChatMessage) error {
 func unregisterClient(ws *websocket.Conn) {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
-
 	// 删除全局客户端
 	var targetClient *client
 	for addr, c := range clients {
 		if c.conn == ws {
 			delete(clients, addr)
+			log.Println("从服务器环境中移除客户端：", addr)
+			allChannels := GetAllChannels()
+			for _, v := range allChannels {
+				DeleteClient(v, addr)
+			}
 			targetClient = c
 			break
 		}

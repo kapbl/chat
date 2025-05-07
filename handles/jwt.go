@@ -29,7 +29,7 @@ func JWTTokenGenerate(secret string, userID string) string {
 		fmt.Println("生成Token失败:", err)
 		return ""
 	}
-	fmt.Println("JWT Token:", tokenString)
+	// fmt.Println("JWT Token:", tokenString)
 	return tokenString
 }
 

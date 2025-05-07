@@ -78,8 +78,6 @@ func JoinChannel(ctx echo.Context) error {
 				log.Println("关联频道失败:", err)
 			}
 			AddClient(rec.ChannelID, clients[claims.UserID])
-			// channelsMap.Store(rec.ChannelID, clients[claims.UserID])
-			// channels[rec.ChannelID] = append(channels[rec.ChannelID], clients[claims.UserID])
 			// 发送消息
 			msg := ChatMessage{
 				User:    "bot",
@@ -93,6 +91,7 @@ func JoinChannel(ctx echo.Context) error {
 			}
 		}
 	}
+
 	return ctx.String(200, "加入频道成功")
 }
 
@@ -109,11 +108,6 @@ func CreateChannel(ctx echo.Context) error {
 		return err
 	}
 	// 创建频道
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
-	// if _, ok := channels[rec.ChannelID]; ok {
-	// 	ctx.JSON(400, map[string]string{"message": "频道已存在"})
-	// }
 	if _, ok := channels.Load(rec.ChannelID); ok {
 		ctx.JSON(400, map[string]string{"message": "频道已存在"})
 		return errors.New("该频道已经存在了")
@@ -147,6 +141,7 @@ func CreateChannel(ctx echo.Context) error {
 			go subscribeRedisChannel(rec.ChannelID)
 		}
 	}
+
 	return ctx.String(200, "create channel success")
 }
 
@@ -165,13 +160,16 @@ func InitJoinedChannels(ctx echo.Context) error {
 		if err != nil {
 			log.Println("查询关联频道失败")
 		}
+
 		channelID := []string{}
 		for _, v := range curChannels {
 			// 将用户添加到channels中
 			channelID = append(channelID, v.ChannelID)
 		}
+
 		return ctx.JSON(200, map[string]interface{}{"channelIDs": channelID})
 	}
+
 	return nil
 }
 
@@ -181,28 +179,34 @@ func ModifyChannel(ctx echo.Context) error {
 		ChannelID string `json:"channelId" binding:"required,min=2,max=50"`
 		NewName   string `json:"newName" binding:"required,min=2,max=50"`
 	}
+
 	var req ModifyChannelRequest
 	if err := ctx.Bind(&req); err != nil {
 		ctx.JSON(400, map[string]string{"error": "数据格式不对"})
 	}
+
 	var existingChannel models.Channel
 	if err := database.DB.Where("channel_id=?", req.ChannelID).First(&existingChannel).Error; err != nil {
 		ctx.JSON(400, map[string]string{"error": "数据库中没有这个频道"})
 		return err
 	}
+
 	var nameCheck models.Channel
 	if database.DB.Where("channel_id=?", req.NewName).First(&nameCheck).RowsAffected > 0 {
 		ctx.JSON(400, map[string]string{"message": "频道名称已存在"})
 		return errors.New("频道名称已存在")
 	}
+
 	updateData := models.Channel{
 		ChannelID: req.NewName,
 		Name:      req.NewName,
 	}
+
 	if err := database.DB.Model(&models.Channel{}).Where("channel_id = ?", req.ChannelID).Updates(updateData).Error; err != nil {
 		ctx.JSON(http.StatusInternalServerError, map[string]string{"message": "频道名称修改失败"})
 		return err
 	}
+
 	return ctx.JSON(200, map[string]string{"message": "频道修改成功"})
 }
 
@@ -211,11 +215,13 @@ func DeleteChannel(ctx echo.Context) error {
 	type DeleteChannelRequest struct {
 		ChannelID string `json:"channelID" binding:"required"`
 	}
+
 	var req DeleteChannelRequest
 	if err := ctx.Bind(&req); err != nil {
 		ctx.JSON(400, map[string]string{"message": "请求格式不对"})
 		return err
 	}
+
 	// 判断这个频道是否存在
 	var channel models.Channel
 	if err := database.DB.Where("channel_id=?", req.ChannelID).First(&channel).Error; err != nil {
@@ -223,7 +229,9 @@ func DeleteChannel(ctx echo.Context) error {
 			ctx.JSON(404, map[string]string{"message": "频道不存在"})
 			return err
 		}
+
 	}
+
 	//  判断这个用户是否关联了这个频道
 	curUser := models.User{}
 	if claims, ok := ctx.Get("jwt_claims").(*JwtCustomClaims); ok {
@@ -231,21 +239,28 @@ func DeleteChannel(ctx echo.Context) error {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				ctx.JSON(400, map[string]string{"error": "未找到该用户"})
 			}
+
 		}
+
 		// 找到了该用户 - 联合查找
 		// fixme 修复删除原有的频道
 		var curChannels []models.Channel
 		if err := database.DB.Model(&curUser).Association("Channels").Find(&curChannels); err != nil {
 			ctx.JSON(400, map[string]string{"error": "该用户未与频道关联"})
 		}
+
 		for _, c := range curChannels {
 			if c.ChannelID == channel.ChannelID {
 				// 删除某个用户和频道的关联
 				if err := database.DB.Where("user_id = ? AND channel_id = ?", curUser.ID, c.ID).Delete(&models.UserChannel{}).Error; err != nil {
 					return ctx.JSON(200, map[string]string{"message": "离开频道失败"})
 				}
+
 			}
+
 		}
+
 	}
+
 	return ctx.JSON(200, map[string]string{"message": "离开频道成功"})
 }
